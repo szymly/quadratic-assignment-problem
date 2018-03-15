@@ -33,19 +33,27 @@ public class Population {
         Individual weakest = individuals[0];
         for(int i=1; i<individuals.length; i++){
 
-            if(weakest.calcCost(distMatrix, flowMatrix) > individuals[i].calcCost(distMatrix, flowMatrix))
+            if(weakest.calcCost(distMatrix, flowMatrix) < individuals[i].calcCost(distMatrix, flowMatrix))
                 weakest = individuals[i];
 
         }
         return weakest;
     }
 
-    public double getAvg(int[][] distMatrix, int[][] flowMatrix){
+    public int getAvg(int[][] distMatrix, int[][] flowMatrix){
         int sum = 0;
         for(int i=0; i<individuals.length; i++){
             sum += individuals[i].calcCost(distMatrix,flowMatrix);
         }
         return sum / individuals.length;
+    }
+
+    public int calcTotalCost(int[][] distMatrix, int[][] flowMatrix){
+        int total = 0;
+        for(int i=0; i<individuals.length; i++){
+            total += individuals[i].calcCost(distMatrix,flowMatrix);
+        }
+        return total;
     }
 
 

@@ -9,6 +9,7 @@ public class Individual {
     private int genesNumber;
     private ArrayList<Integer> genes;
     private int cost;
+    private double rouletteProb;
 
     public Individual(int genesNumber){
         this.genesNumber = genesNumber;
@@ -67,6 +68,18 @@ public class Individual {
     }
     public int getGenesNumber(){
         return this.genesNumber;
+    }
+
+    public int getCost(){
+        return this.cost;
+    }
+
+    public void setRouletteProb(double rouletteProb){
+        this.rouletteProb = rouletteProb;
+    }
+
+    public double getRouletteProb(){
+        return this.rouletteProb;
     }
 
 }

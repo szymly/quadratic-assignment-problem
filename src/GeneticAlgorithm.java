@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.Random;
 
 /**
@@ -6,8 +7,8 @@ import java.util.Random;
  */
 public class GeneticAlgorithm {
 
-    public static final int ALGORITHM_ITERATIONS = 1;
-    public static final String FILE_PATH = "resources/had12.dat";
+    public static final int ALGORITHM_ITERATIONS = 10;
+    public static final String FILE_PATH = "resources/had14.dat";
 
     public static final int TOURNAMENT = 1;
     public static final int ROULETTE = 2;
@@ -24,16 +25,18 @@ public class GeneticAlgorithm {
     public static final boolean USE_RANDOM_GENES = true;
     public static final boolean USE_EMPTY_GENES = false;
 
-    public static final int RANDOM_GENE_BOUND = 12;
-
 
 
     private Random random;
     private int[][] distanceMatrix;
     private int[][] flowMatrix;
     private MatrixFileReader matrixFileReader;
-    private int geneSize;
+    private int chromosomeSize;
     private int generationsCounter;
+    private LinkedList<String> csvRows;
+
+
+    private Individual fittest;
 
 
 
@@ -43,18 +46,23 @@ public class GeneticAlgorithm {
         distanceMatrix = new int[0][0];
         flowMatrix = new int[0][0];
         generationsCounter = 1;
+        fittest = new Individual(chromosomeSize);
+        fittest.initialize(USE_RANDOM_GENES);
+        csvRows = new LinkedList<>();
     }
 
     private void init(){
         matrixFileReader.readMatrixFromFile(FILE_PATH);
         distanceMatrix = matrixFileReader.getDistanceMatrix();
         flowMatrix = matrixFileReader.getFlowMatrix();
-        geneSize = matrixFileReader.getMatrixSize();
+        chromosomeSize = matrixFileReader.getMatrixSize();
     }
 
 
 
     public static void main(String[] args){
+
+        long fileMark = System.currentTimeMillis();
 
         GeneticAlgorithm geneticAlgorithm = new GeneticAlgorithm();
         geneticAlgorithm.init();
@@ -62,16 +70,31 @@ public class GeneticAlgorithm {
         int[][] flowMatrix = geneticAlgorithm.getFlowMatrix();
 
         for(int i=0; i<ALGORITHM_ITERATIONS; i++) {
-            System.out.println("Initializing population...");
+
+            //geneticAlgorithm.clearRows();
+            geneticAlgorithm.clearCounter();
+
+            //System.out.println("Initializing population...");
             Population inputPopulation = geneticAlgorithm.initializePopulation(USE_RANDOM_GENES);
-            System.out.println("Population initialized.");
+            //System.out.println("Population initialized.");
 
-            Population outputPopulation = geneticAlgorithm.evolve(inputPopulation);
+            geneticAlgorithm.evolve(inputPopulation);
 
-            int result = outputPopulation.getFittest(distMatrix, flowMatrix).calcCost(distMatrix, flowMatrix);
 
-            System.out.println("Result: " + result + "\n");
+
+
+
+            RandomSelectionAlgorithm randomSelectionAlgorithm = new RandomSelectionAlgorithm(geneticAlgorithm.getChromosomeSize(), distMatrix, flowMatrix);
+            Individual randomIndividual = randomSelectionAlgorithm.randomSelect(inputPopulation, 100);
+            System.out.println("Random individual: " + randomIndividual.calcCost(distMatrix,flowMatrix));
+
+            GreedyAlgorithm greedyAlgorithm = new GreedyAlgorithm(distMatrix,flowMatrix, geneticAlgorithm.getChromosomeSize());
+            Individual greedyIndividual = greedyAlgorithm.getFittest();
+            System.out.println("Greedy individual: " + greedyIndividual.calcCost(distMatrix,flowMatrix) + "\n");
         }
+
+        new CSVMaker().saveCSV("outputs/GA-QAP "+ geneticAlgorithm.getChromosomeSize() +"."+fileMark+".csv",
+                geneticAlgorithm.getRows());
     }
 
 
@@ -84,7 +107,7 @@ public class GeneticAlgorithm {
 
             //System.out.println("Initializing individual no " + i);
 
-            Individual individual = new Individual(geneSize);
+            Individual individual = new Individual(chromosomeSize);
 
             //System.out.println("Individual created. Initializing with genes.");
 
@@ -102,22 +125,30 @@ public class GeneticAlgorithm {
 
     public Population evolve(Population inputPopulation) {
 
-        System.out.println("Evolving... Generation: " + (generationsCounter));
+        //System.out.println("Evolving... Generation: " + (generationsCounter));
 
+        fittest = inputPopulation.getFittest(distanceMatrix, flowMatrix);
 
         Population outputPopulation;
-        outputPopulation = initializePopulation(USE_EMPTY_GENES);
-        Individual fittest = inputPopulation.getFittest(distanceMatrix, flowMatrix);
+
+        //selection
+        outputPopulation = selection(inputPopulation, ROULETTE);
+
+
         outputPopulation.addIndividual(fittest, 0);
 
-        System.out.println("Fittest to be transferred to new population: "
-                + fittest.calcCost(distanceMatrix,flowMatrix));
+        csvRows.add(generationsCounter+";"+fittest.calcCost(distanceMatrix,flowMatrix)+";"
+        +inputPopulation.getWeakest(distanceMatrix,flowMatrix).calcCost(distanceMatrix,flowMatrix)
+                +";"+inputPopulation.getAvg(distanceMatrix,flowMatrix));
 
+        if(generationsCounter == 100) {
+            System.out.println("Genetic individual: "
+                    + fittest.calcCost(distanceMatrix, flowMatrix));
+        }
 
         for (int i = 1; i < POPULATION_SIZE; i++) {
 
-            //selection SELECT WHOLE POPULATION
-            Individual newIndividual = selection(inputPopulation, TOURNAMENT);
+            Individual newIndividual = outputPopulation.getIndividual(i);
 
             //crossover
             if (random.nextDouble() % 1 < CROSSOVER_PROB) {
@@ -125,10 +156,6 @@ public class GeneticAlgorithm {
                 Individual parent2 = inputPopulation.getIndividual(random.nextInt(POPULATION_SIZE));
                 newIndividual = crossover(parent1, parent2);
             }
-
-            //repair
-            //newIndividual = repair(newIndividual);
-
 
             //mutation
             newIndividual = mutate(newIndividual);
@@ -150,10 +177,10 @@ public class GeneticAlgorithm {
     public Individual mutate(Individual inputIndividual){
         Individual individual = inputIndividual;
 
-        for(int i=0; i<geneSize; i++) {
+        for(int i = 0; i< chromosomeSize; i++) {
             if (random.nextDouble() % 1 < MUTATION_PROB) {
-                int firstIndex = random.nextInt(geneSize);
-                int secondIndex = random.nextInt(geneSize);
+                int firstIndex = i;
+                int secondIndex = random.nextInt(chromosomeSize);
 
                 int tempGene = individual.getGene(firstIndex);
 
@@ -168,9 +195,9 @@ public class GeneticAlgorithm {
     public Individual crossover(Individual i1, Individual i2){
         Individual individual;
 
-        int pivot = random.nextInt(geneSize);
+        int pivot = random.nextInt(chromosomeSize);
 
-        individual = new Individual(geneSize);
+        individual = new Individual(chromosomeSize);
 
 
         for(int i=0; i<pivot; i++)
@@ -178,7 +205,7 @@ public class GeneticAlgorithm {
             individual.setGene(i, i1.getGene(i));
         }
 
-        for(int i=pivot; i<geneSize; i++)
+        for(int i = pivot; i< chromosomeSize; i++)
         {
             int gene = i2.getGene(i);
 
@@ -188,65 +215,72 @@ public class GeneticAlgorithm {
             }
             else
             {
-                int randomGene = random.nextInt(RANDOM_GENE_BOUND);
+                individual.setGene(i, -1);
+            }
+        }
+
+        for(int i=0; i<chromosomeSize; i++)
+        {
+            if(individual.getGene(i)==-1){
+                int randomGene = random.nextInt(chromosomeSize);
 
                 while(individual.getGenes().contains(randomGene)){
-                    randomGene = random.nextInt(RANDOM_GENE_BOUND);
+                    randomGene = random.nextInt(chromosomeSize);
                 }
 
                 individual.setGene(i, randomGene);
 
             }
         }
-
         return individual;
     }
 
 
-    public Individual selection(Population population, int type){
-        Individual individual = new Individual(geneSize);
+    public Population selection(Population population, int type){
+
+        Population newPopulation = new Population(POPULATION_SIZE);
 
         switch(type){
             case 1:
-                Population tournament = new Population(TOUR);
-                for(int i=0; i<TOUR; i++){
-                    Individual drawn = population.getIndividual(random.nextInt(POPULATION_SIZE));
-                    tournament.addIndividual(drawn, i);
+                for(int i=1; i<POPULATION_SIZE; i++) {
+                    Individual individual;
+                    Population tournament = new Population(TOUR);
+                    for (int j = 0; j < TOUR; j++) {
+                        Individual drawn = population.getIndividual(random.nextInt(POPULATION_SIZE));
+                        tournament.addIndividual(drawn, j);
+                    }
+                    individual = tournament.getFittest(distanceMatrix, flowMatrix);
+                    newPopulation.addIndividual(individual, i);
                 }
-                individual = tournament.getFittest(distanceMatrix,flowMatrix);
                 break;
 
             case 2:
-                //roulette
+                int totalCost = population.calcTotalCost(distanceMatrix,flowMatrix);
+                int worstCost = population.getWeakest(distanceMatrix,flowMatrix).getCost();
+                Random random = new Random();
+
+                for(int i=0; i<POPULATION_SIZE; i++) {
+                    Individual individual = population.getIndividual(i);
+                    int cost = individual.calcCost(distanceMatrix,flowMatrix);
+                    population.getIndividual(i).setRouletteProb((worstCost-cost+1)/(totalCost+1));
+                }
+
+                for(int i=0; i<POPULATION_SIZE; i++){
+                    double r = random.nextDouble() % 1;
+
+                    int j = random.nextInt(POPULATION_SIZE);
+                    while(r < population.getIndividual(j).getRouletteProb()){
+                        j = random.nextInt(POPULATION_SIZE);
+                    }
+                    newPopulation.addIndividual(population.getIndividual(j), i);
+                }
                 break;
         }
 
 
-        return individual;
+        return newPopulation;
     }
 
-    public Individual repair(Individual individual){
-
-        ArrayList<Integer> checkedGenes = new ArrayList<>();
-
-        Individual outputIndividual = new Individual(geneSize);
-
-        for(int i=0; i<individual.getGenes().size(); i++){
-            int newGene = individual.getGene(i);
-            if(checkedGenes.contains(individual.getGene(i)))
-            {
-                newGene = random.nextInt(RANDOM_GENE_BOUND);
-
-                while(checkedGenes.contains(newGene)){
-                    newGene = random.nextInt(RANDOM_GENE_BOUND);
-                    //System.out.println("Szukam!");
-                }
-            }
-            outputIndividual.getGenes().add(i, newGene);
-            checkedGenes.add(outputIndividual.getGenes().get(i));
-        }
-        return outputIndividual;
-    }
 
     public int[][] getDistanceMatrix(){
         return this.distanceMatrix;
@@ -257,6 +291,28 @@ public class GeneticAlgorithm {
     }
 
 
+    public Individual getFittest() {
+        return fittest;
+    }
 
+    public LinkedList<String> getRows(){
+        return csvRows;
+    }
+
+    public void setRows(LinkedList<String> newRows){
+        this.csvRows = newRows;
+    }
+
+    public void clearRows(){
+        this.csvRows = new LinkedList<>();
+    }
+
+    public int getChromosomeSize(){
+        return chromosomeSize;
+    }
+
+    public void clearCounter(){
+        this.generationsCounter = 1;
+    }
 
 }
